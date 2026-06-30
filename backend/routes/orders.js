@@ -1035,6 +1035,7 @@ router.get("/cart/:tableId", async (req, res) => {
             ISNULL(d.DiscountAmount, 0) as discount,
             ISNULL(d.DiscountType, NULL) as discountType,
             d.CreatedOn as DateCreated,
+            ISNULL(dish.isServiceCharge, 0) as isServiceCharge,
             CASE d.StatusCode 
               WHEN 1 THEN 'NEW' WHEN 2 THEN 'SENT' WHEN 3 THEN 'READY' 
               WHEN 4 THEN 'SERVED' WHEN 5 THEN 'HOLD' WHEN 0 THEN 'VOIDED' 
