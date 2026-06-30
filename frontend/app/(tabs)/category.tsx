@@ -618,6 +618,8 @@ export default function Category() {
       // Re-fetch only if data is likely stale (older than 30s)
       if (Date.now() - lastTablesFetchTime > 30000) {
         fetchTables();
+      } else {
+        setLoading(false);
       }
     }, []),
   );
