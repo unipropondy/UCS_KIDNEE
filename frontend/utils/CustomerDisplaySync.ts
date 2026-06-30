@@ -61,7 +61,7 @@ export interface PaymentSuccessParams {
 const isAllowedRole = (): boolean => {
   const user = useAuthStore.getState().user;
   if (!user) return false;
-  return user.role === "ADMIN";
+  return ["ADMIN", "CASHIER"].includes(user.role);
 };
 
 /* ─────────────────────────────────────────────────────────────────────────

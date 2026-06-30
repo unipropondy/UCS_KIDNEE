@@ -17,7 +17,7 @@
  */
 
 import { Ionicons } from "@expo/vector-icons";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -50,41 +50,44 @@ const getLogoUri = (logo: string) => {
   return `${API_URL}${logo.startsWith("/") ? "" : "/"}${logo}`;
 };
 
+/**
+ * BackButton — Android only.
+ * Rendered as a separate component so useRouter() is called at the
+ * top-level of a component (Rules of Hooks), not inside a helper function.
+ * Returns null on web (Electron BrowserWindow).
+ */
+function BackButton() {
+  if (Platform.OS === 'web') return null;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { useRouter } = require('expo-router');
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const router = useRouter();
+  return (
+    <TouchableOpacity
+      style={styles.floatingBackBtn}
+      onPress={() => {
+        if (router.canGoBack()) {
+          router.back();
+        } else {
+          router.replace('/(tabs)/category');
+        }
+      }}
+      activeOpacity={0.7}
+    >
+      <Ionicons name="arrow-back" size={18} color="#ef4444" />
+      <Text style={{ color: '#ef4444', fontFamily: Fonts.bold, fontSize: 13 }}>
+        Back
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
 export default function CustomerDisplayContent() {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const isLandscape = windowWidth > windowHeight;
 
   const companySettings = useCompanySettingsStore((s: any) => s.settings);
   const paymentSettings = usePaymentSettingsStore((s: any) => s.settings);
-
-  // Change 4 (part a): Back button uses expo-router which is not available in
-  // Electron. We lazy-require it so the package does not crash on web.
-  // On web the button returns null (not needed on the secondary monitor display).
-  const renderBackButton = () => {
-    if (Platform.OS === 'web') return null;
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { useRouter } = require('expo-router');
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    const router = useRouter();
-    return (
-      <TouchableOpacity
-        style={styles.floatingBackBtn}
-        onPress={() => {
-          if (router.canGoBack()) {
-            router.back();
-          } else {
-            router.replace('/(tabs)/category');
-          }
-        }}
-        activeOpacity={0.7}
-      >
-        <Ionicons name="arrow-back" size={18} color="#ef4444" />
-        <Text style={{ color: '#ef4444', fontFamily: Fonts.bold, fontSize: 13 }}>
-          Back
-        </Text>
-      </TouchableOpacity>
-    );
-  };
 
   const [displayState, setDisplayState] = useState<DisplayState>(DEFAULT_STATE);
   const [floatingFoods, setFloatingFoods] = useState<any[]>([]);
@@ -364,19 +367,13 @@ export default function CustomerDisplayContent() {
             >
               <Ionicons name="link-outline" size={18} color="#fff" />
               <Text style={styles.terminalModalBtnConfirmText}>Pair Display</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-
-  // Success view
-  if (displayState.paymentSuccess && paymentSettings.customerSideDisplay) {
+     // Success view — always show when payment is marked complete.
+  // The display is already mounted (secondary screen), no need to gate on customerSideDisplay here.
+  if (displayState.paymentSuccess) {
     return (
       <View style={styles.successContainer}>
         {renderTerminalModal()}
-        {renderBackButton()}
+        <BackButton />
 
         <View style={styles.successMainContent}>
           <Animated.View
@@ -456,7 +453,7 @@ export default function CustomerDisplayContent() {
     return (
       <View style={styles.checkoutContainer}>
         {renderTerminalModal()}
-        {renderBackButton()}
+        <BackButton />
         {/* Change Terminal pill */}
         {terminalCode ? (
           <TouchableOpacity
@@ -621,7 +618,7 @@ export default function CustomerDisplayContent() {
                     </Text>
                     {item.discountAmount > 0 && !item.isVoided ? (
                       <Text style={styles.receiptItemDiscount}>
-                        ðŸ·ï¸ Discount: -{companySettings.currencySymbol || "$"}
+                        ðŸ ·ï¸  Discount: -{companySettings.currencySymbol || "$"}
                         {item.discountAmount.toFixed(2)}
                         {item.discountPercent > 0
                           ? ` (${item.discountPercent}%)`
@@ -629,7 +626,7 @@ export default function CustomerDisplayContent() {
                       </Text>
                     ) : null}
                     {item.note ? (
-                      <Text style={styles.receiptItemNote}>ðŸ“ {item.note}</Text>
+                      <Text style={styles.receiptItemNote}>ðŸ“  {item.note}</Text>
                     ) : null}
                     {item.modifiers &&
                       item.modifiers.map((m: any, mIdx: number) => (
@@ -754,7 +751,7 @@ export default function CustomerDisplayContent() {
   return (
     <View style={styles.idleContainer}>
       {renderTerminalModal()}
-      {renderBackButton()}
+      <BackButton />
       {/* Change Terminal pill */}
       {terminalCode ? (
         <TouchableOpacity
