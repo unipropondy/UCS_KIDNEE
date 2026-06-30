@@ -367,7 +367,14 @@ export default function CustomerDisplayContent() {
             >
               <Ionicons name="link-outline" size={18} color="#fff" />
               <Text style={styles.terminalModalBtnConfirmText}>Pair Display</Text>
-     // Success view — always show when payment is marked complete.
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  // Success view — always show when payment is marked complete.
   // The display is already mounted (secondary screen), no need to gate on customerSideDisplay here.
   if (displayState.paymentSuccess) {
     return (
