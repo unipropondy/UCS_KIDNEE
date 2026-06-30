@@ -465,7 +465,7 @@ async function syncToProfessionalTables(
 
     batchSql += `
       -- Process Item ${idx}
-      IF EXISTS (SELECT 1 FROM RestaurantOrderDetailCur WHERE OrderDetailId = @${p_id})
+      IF EXISTS (SELECT 1 FROM RestaurantOrderDetailCur WITH (UPDLOCK, HOLDLOCK) WHERE OrderDetailId = @${p_id})
       BEGIN
         UPDATE RestaurantOrderDetailCur SET 
           OrderId = @orderId,
@@ -1026,44 +1026,48 @@ router.get("/cart/:tableId", async (req, res) => {
         sql.NVarChar(50),
         isRealOrderId ? currentOrderId : "__NONE__",
       ).query(`
-        SELECT 
-          d.OrderDetailId as lineItemId, d.DishId as id,ISNULL(d.SongName,'') as songName,d.Quantity as qty, 
-          d.PricePerUnit as price, 
-          ISNULL(NULLIF(d.DishName,''), dish.Name) as name,
-          d.ModifiersJSON, d.Remarks as note, d.isTakeAway as isTakeaway,
-          ISNULL(d.DiscountAmount, 0) as discount,
-          ISNULL(d.DiscountType, NULL) as discountType,
-          d.CreatedOn as DateCreated,
-          CASE d.StatusCode 
-            WHEN 1 THEN 'NEW' WHEN 2 THEN 'SENT' WHEN 3 THEN 'READY' 
-            WHEN 4 THEN 'SERVED' WHEN 5 THEN 'HOLD' WHEN 0 THEN 'VOIDED' 
-            ELSE 'SENT' 
-          END as status,
-          ISNULL(ckt.KitchenTypeCode, '2') as KitchenTypeCode, 
-          ISNULL(ISNULL(ckt.KitchenTypeName, cat.CategoryName), 'KITCHEN') as KitchenTypeName,
-          pm.PrinterPath as PrinterIP
-        FROM RestaurantOrderDetailCur d 
-        JOIN RestaurantOrderCur h ON d.OrderId = h.OrderId 
-        LEFT JOIN DishMaster dish ON d.DishId = dish.DishId
-        LEFT JOIN DishGroupMaster dgm ON dish.DishGroupId = dgm.DishGroupId
-        LEFT JOIN CategoryMaster cat ON dgm.CategoryId = cat.CategoryId
-        LEFT JOIN CategoryKitchenType ckt ON dgm.CategoryId = ckt.CategoryId
-        LEFT JOIN (
-          SELECT *, ROW_NUMBER() OVER(PARTITION BY KitchenTypeValue ORDER BY PrinterId) as rn 
-          FROM PrintMaster WHERE IsActive = 1 AND PrinterType = 2
-        ) pm ON CAST(ckt.KitchenTypeCode AS VARCHAR(50)) = CAST(pm.KitchenTypeValue AS VARCHAR(50)) AND pm.rn = 1
-        WHERE 
-          h.isOrderClosed = 0
-          AND d.StatusCode <> 0 -- 🚀 SHIELD: Never fetch voided items back into the active cart
-          AND ISNULL(d.isSettlement,0) = 0
-          AND (
-            h.OrderNumber = @orderNo
-            OR (
-              @orderNo = '__NONE__' AND 
-              h.OrderId = (SELECT TOP 1 OrderId FROM RestaurantOrderCur WHERE Tableno = @tableNo AND isOrderClosed = 0 ORDER BY CreatedOn DESC)
+        WITH UniqueItems AS (
+          SELECT 
+            d.OrderDetailId as lineItemId, d.DishId as id,ISNULL(d.SongName,'') as songName,d.Quantity as qty, 
+            d.PricePerUnit as price, 
+            ISNULL(NULLIF(d.DishName,''), dish.Name) as name,
+            d.ModifiersJSON, d.Remarks as note, d.isTakeAway as isTakeaway,
+            ISNULL(d.DiscountAmount, 0) as discount,
+            ISNULL(d.DiscountType, NULL) as discountType,
+            d.CreatedOn as DateCreated,
+            CASE d.StatusCode 
+              WHEN 1 THEN 'NEW' WHEN 2 THEN 'SENT' WHEN 3 THEN 'READY' 
+              WHEN 4 THEN 'SERVED' WHEN 5 THEN 'HOLD' WHEN 0 THEN 'VOIDED' 
+              ELSE 'SENT' 
+            END as status,
+            ISNULL(ckt.KitchenTypeCode, '2') as KitchenTypeCode, 
+            ISNULL(ISNULL(ckt.KitchenTypeName, cat.CategoryName), 'KITCHEN') as KitchenTypeName,
+            pm.PrinterPath as PrinterIP,
+            ROW_NUMBER() OVER(PARTITION BY d.OrderDetailId ORDER BY d.CreatedOn DESC) as rn
+          FROM RestaurantOrderDetailCur d 
+          JOIN RestaurantOrderCur h ON d.OrderId = h.OrderId 
+          LEFT JOIN DishMaster dish ON d.DishId = dish.DishId
+          LEFT JOIN DishGroupMaster dgm ON dish.DishGroupId = dgm.DishGroupId
+          LEFT JOIN CategoryMaster cat ON dgm.CategoryId = cat.CategoryId
+          LEFT JOIN CategoryKitchenType ckt ON dgm.CategoryId = ckt.CategoryId
+          LEFT JOIN (
+            SELECT *, ROW_NUMBER() OVER(PARTITION BY KitchenTypeValue ORDER BY PrinterId) as rn 
+            FROM PrintMaster WHERE IsActive = 1 AND PrinterType = 2
+          ) pm ON CAST(ckt.KitchenTypeCode AS VARCHAR(50)) = CAST(pm.KitchenTypeValue AS VARCHAR(50)) AND pm.rn = 1
+          WHERE 
+            h.isOrderClosed = 0
+            AND d.StatusCode <> 0 -- 🚀 SHIELD: Never fetch voided items back into the active cart
+            AND ISNULL(d.isSettlement,0) = 0
+            AND (
+              h.OrderNumber = @orderNo
+              OR (
+                @orderNo = '__NONE__' AND 
+                h.OrderId = (SELECT TOP 1 OrderId FROM RestaurantOrderCur WHERE Tableno = @tableNo AND isOrderClosed = 0 ORDER BY CreatedOn DESC)
+              )
             )
-          )
-        ORDER BY d.CreatedOn ASC
+        )
+        SELECT * FROM UniqueItems WHERE rn = 1
+        ORDER BY DateCreated ASC
       `);
 
     const items = result.recordset.map((i) => ({

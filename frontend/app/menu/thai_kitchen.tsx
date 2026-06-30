@@ -356,6 +356,11 @@ export default function MenuScreen() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   // Track in-flight modifier fetches to prevent duplicate requests
   const fetchingModifiers = React.useRef<Set<string>>(new Set());
+  // Track click timestamps to prevent double clicks / double trigger
+  const lastClickTime = React.useRef<Record<string, number>>({});
+  const lastAddWithModifiersTime = React.useRef<number>(0);
+  const lastConfirmOpenItemTime = React.useRef<number>(0);
+  const lastSplitConfirmTime = React.useRef<number>(0);
 
   // Modifier Modal State
   const [modifiers, setModifiers] = useState<any[]>([]);
@@ -898,6 +903,14 @@ export default function MenuScreen() {
   const openModifiers = React.useCallback(
     async (dish: any) => {
       console.log("Dish Clicked", dish);
+      const now = Date.now();
+      const lastClick = lastClickTime.current[dish.DishId] || 0;
+      if (now - lastClick < 350) {
+        console.log(`[Double Click Blocked] Dish ${dish.DishId} clicked too quickly.`);
+        return;
+      }
+      lastClickTime.current[dish.DishId] = now;
+
       try {
         const splitRes = await fetch(
           `${API_URL}/api/menu/checksplitdish/${dish.DishId}`
@@ -970,6 +983,7 @@ export default function MenuScreen() {
         } else {
           addToCartSimple();
         }
+        fetchingModifiers.current.delete(dish.DishId);
         return;
       }
 
@@ -1048,6 +1062,10 @@ export default function MenuScreen() {
   };
 
   const addWithModifiers = () => {
+    const now = Date.now();
+    if (now - lastAddWithModifiersTime.current < 400) return;
+    lastAddWithModifiersTime.current = now;
+
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (selectedDish) {
       const allAvailable = [...modifiers, ...customMods];
@@ -1091,6 +1109,10 @@ export default function MenuScreen() {
 
   // OPEN ITEM: Validate and add to cart at custom price
   const confirmOpenItemPrice = () => {
+    const now = Date.now();
+    if (now - lastConfirmOpenItemTime.current < 400) return;
+    lastConfirmOpenItemTime.current = now;
+
     const trimmed = openItemPrice.trim();
     if (!trimmed || trimmed === "") {
       setOpenItemError("Please enter a price.");
@@ -1435,6 +1457,10 @@ export default function MenuScreen() {
                     alert("Please enter song name");
                     return;
                   }
+
+                  const now = Date.now();
+                  if (now - lastSplitConfirmTime.current < 500) return;
+                  lastSplitConfirmTime.current = now;
 
                   const shareAmount =
                     totalAmount / selected.length;
